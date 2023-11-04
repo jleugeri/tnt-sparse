@@ -46,12 +46,6 @@ module sparserdes_node #(
     output logic done,
 
     // === DESERIALIZATION ===
-    // output, deserialized bits going to low sub-sub-tree
-    output logic deserialized_bit_low,
-
-    // output, deserialized bits going to high sub-sub-tree
-    output logic deserialized_bit_high,
-
     // input, gets deserialized bit from the parent
     input logic deserialized_bit,
 
@@ -79,8 +73,6 @@ module sparserdes_node #(
                 serialized_bit <= 0;
                 write_low <= 0;
                 write_high <= 0;
-                deserialized_bit_low <= 0;
-                deserialized_bit_high <= 0;
             end
             else begin
                 case (state)
@@ -105,8 +97,6 @@ module sparserdes_node #(
                         end
                         else begin
                             serialized_bit <= 0;
-                            deserialized_bit_low <= 0;
-                            deserialized_bit_high <= 0;
                         end
                     end
 
@@ -115,8 +105,8 @@ module sparserdes_node #(
                         state <= 3'b000;
                         done <= 0;
                         serialized_bit <= 0;
-                        deserialized_bit_low <= 0;
-                        deserialized_bit_high <= 0;
+                        write_high <= 0;
+                        write_low <= 0;
                     end
 
                     // 3'b010: sending high bit and then go to refractory state
@@ -142,7 +132,8 @@ module sparserdes_node #(
                     // 3'b110: receiving low bit
                     3'b110 : begin
                         // send the low bit
-                        deserialized_bit_low <= deserialized_bit;
+                        write_low <= 1;
+                        write_high <= 0;
                         // next, go to receiving high bit state
                         state <= 3'b111;
                     end
@@ -150,7 +141,8 @@ module sparserdes_node #(
                     // 3'b111: receiving high bit and then go to refractory state
                     3'b111 : begin
                         // send the high bit
-                        deserialized_bit_high <= deserialized_bit;
+                        write_high <= 1;
+                        write_low <= 0;
                         // next, go to refractory state
                         state <= 3'b001;
                         // we're done now
@@ -174,8 +166,6 @@ module sparserdes_node #(
                 serialized_bit <= 0;
                 write_low <= 0;
                 write_high <= 0;
-                deserialized_bit_low <= 0;
-                deserialized_bit_high <= 0;
             end 
             else begin
                 nonempty <= nonempty_low | nonempty_high;
@@ -232,8 +222,6 @@ module sparserdes_node #(
                         state <= 3'b000;
                         done <= 0;
                         serialized_bit <= 1'b0;
-                        deserialized_bit_low <= 0;
-                        deserialized_bit_high <= 0;
                     end
 
                     // 3'b010: wait-low
@@ -299,8 +287,6 @@ module sparserdes_node #(
 
                     // 3'b110: wait-low
                     3'b110: begin
-                        // pass on whatever input comes for the low sub-sub-tree
-                        deserialized_bit_low <= deserialized_bit;
 
                         // when the low sub-sub-tree is finished, we can move on
                         if ( done_low ) begin
@@ -327,8 +313,6 @@ module sparserdes_node #(
 
                     // 3'b111: wait-high
                     3'b111: begin
-                        // pass on whatever output comes from the low sub-sub-tree
-                        deserialized_bit_high <= deserialized_bit;
 
                         // when the low sub-sub-tree is finished, we're done!
                         if ( done_high ) begin
@@ -542,9 +526,6 @@ module sparserdes #(
             wire [SIZE-1:0] read_out1;
             wire [SIZE-1:0] read_out2;
 
-            wire [SIZE-1:0] deserialized_bits_in;
-            wire [SIZE-1:0] deserialized_bits_out1;
-            wire [SIZE-1:0] deserialized_bits_out2;
             wire [SIZE-1:0] write_in;
             wire [SIZE-1:0] write_out1;
             wire [SIZE-1:0] write_out2;
@@ -556,7 +537,7 @@ module sparserdes #(
                 assign nonempty_in = leafs;
                 assign done_in = {SIZE{1'b0}};
                 assign serialized_bits_in = {SIZE{1'b0}};
-                assign leafs_shadow = deserialized_bits_out1 | deserialized_bits_out2;
+                assign leafs_shadow = write_out1 | write_out2;
             end else begin
                 // bottom up signals
                 assign nonempty_in = level[l-1].nonempty_out;
@@ -566,7 +547,6 @@ module sparserdes #(
                 // top-down signals
                 assign level[l-1].read_in = read_out1 | read_out2;
                 assign level[l-1].write_in = write_out1 | write_out2;
-                assign level[l-1].deserialized_bits_in = deserialized_bits_out1 | deserialized_bits_out2;
             end
             
             for (n = 0; n < SIZE; n = n + 1) begin : node
@@ -579,9 +559,7 @@ module sparserdes #(
                     .serialized_bit_low(serialized_bits_in[n]),
                     .serialized_bit_high(serialized_bits_in[(n+(1 << l)) % SIZE]),
                     .serialized_bit(serialized_bits_out[n]),
-                    .deserialized_bit_low(deserialized_bits_out1[n]),
-                    .deserialized_bit_high(deserialized_bits_out2[(n+(1 << l)) % SIZE]),
-                    .deserialized_bit(deserialized_bits_in[n]),
+                    .deserialized_bit(bitstream_in),
                     .read_low(read_out1[n]),
                     .read_high(read_out2[(n+(1 << l)) % SIZE]),
                     .write_low(write_out1[n]),
@@ -600,9 +578,6 @@ module sparserdes #(
     assign level[DEPTH-1].read_in = read_select;
     assign bitstream_out = level[DEPTH-1].serialized_bits_out[0];
     assign level[DEPTH-1].write_in = write_select;
-    assign level[DEPTH-1].deserialized_bits_in[0] = bitstream_in;
-
-    assign level[DEPTH-1].deserialized_bits_in[7:1] = 7'b0000000;
 
     logic enable_decoder;
     /*
@@ -705,6 +680,7 @@ module sparserdes #(
 
                 // 3'b100: receiving bits from bitstream
                 3'b100: begin
+                    leafs <= leafs | leafs_shadow;
                     if (level[DEPTH-1].done_out[0]) begin
                         state <= 3'b011;
                         done <= 1;
