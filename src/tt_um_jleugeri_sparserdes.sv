@@ -1,3 +1,4 @@
+`default_nettype none
 
 module tt_um_jleugeri_sparserdes (
     input  wire [7:0] ui_in,    // Dedicated inputs
@@ -15,7 +16,6 @@ module tt_um_jleugeri_sparserdes (
     assign reset = ~rst_n;
 
     localparam SIZE = 8;
-    logic decode_valid;
     logic bitstream_internal;
 
     assign uio_oe     = 8'b11000000;
@@ -27,9 +27,25 @@ module tt_um_jleugeri_sparserdes (
     assign instructions1 = uio_in[3] ? 3'b000 : uio_in[2:0];
     assign instructions2 = uio_in[3] ? uio_in[2:0] : 3'b000;
 
+    logic [$clog2(SIZE)-1:0] addr_in;
+    assign addr_in = ui_in[$clog2(SIZE)-1:0];
+    
+    wire [7:$clog2(SIZE)] _ui_in_unused;
+    assign _ui_in_unused = ui_in[7:$clog2(SIZE)];
+
+
+    logic [$clog2(SIZE)-1:0] addr_out;
+    assign uo_out[$clog2(SIZE)-1:0] = addr_out;
+    assign uo_out[7:$clog2(SIZE)] = 0;
+
+    logic bitstream_in, done;
+    assign bitstream_in = uio_in[5];
+    assign uio_out[7] = done;
+
     // dummy wires
-    logic [7:0] addr_in_dummy, addr_out_dummy;
-    logic bistream_out_dummy, done_dummy;
+    logic [$clog2(SIZE)-1:0] addr_in_dummy;
+    logic [$clog2(SIZE)-1:0] addr_out_dummy;
+    logic bitstream_out_dummy, done_dummy;
 
     // instantiate the module
     sparserdes #(
@@ -39,11 +55,11 @@ module tt_um_jleugeri_sparserdes (
         .reset(reset),
         .enable(ena),
         .instruction(instructions1),
-        .addr_in(ui_in),
-        .addr_out(uo_out),
-        .bitstream_in(uio_in[5]),
+        .addr_in(addr_in),
+        .addr_out(addr_out),
+        .bitstream_in(bitstream_in),
         .bitstream_out(bitstream_internal),
-        .done(uio_out[7])
+        .done(done)
     );
 
 
