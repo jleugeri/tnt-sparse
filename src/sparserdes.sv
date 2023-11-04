@@ -579,19 +579,6 @@ module sparserdes #(
     assign bitstream_out = level[DEPTH-1].serialized_bits_out[0];
     assign level[DEPTH-1].write_in = write_select;
 
-    logic enable_decoder;
-    /*
-    // add the address decoder
-    sparserdes_decoder #(
-        .SIZE(8)
-    ) d (
-        .clk(clk),
-        .reset(reset),
-        .enable(enable_decoder),
-        .bitstream(level[DEPTH-1].serialized_bits_out[0]),
-        .addr_out(addr_out),
-        .valid(decode_valid)
-    );*/
     
     always_ff @( posedge clk ) begin
         if (reset) begin
@@ -600,10 +587,9 @@ module sparserdes #(
             read_select <= 0;
             write_select <= 0;
             done <= 0;
-            enable_decoder <= 0;
             addr_out <= 0;
         end
-        else begin
+        else if (enable) begin
             case (state)
                 // 3'b000: collecting inputs
                 3'b000: begin
@@ -624,7 +610,7 @@ module sparserdes #(
                         // 3'b011: start iterating once inputs have settled
                         3'b011: begin
                             state <= 3'b001;
-                            countdown <= DEPTH;
+                            countdown <= ($clog2(SIZE))'(DEPTH);
                         end
 
                         // 3'b100: reserved
@@ -653,7 +639,7 @@ module sparserdes #(
                 3'b001: begin
                     if (countdown == 0) begin
                         state <= 3'b010;
-                        enable_decoder <= 1;
+                        //enable_decoder <= 1;
                         read_select <= (1'b1 << addr_in);
 
                     end
@@ -675,7 +661,7 @@ module sparserdes #(
                 3'b011: begin
                     state <= 3'b000;
                     done <= 0;
-                    enable_decoder <= 0;
+                    //enable_decoder <= 0;
                 end
 
                 // 3'b100: receiving bits from bitstream

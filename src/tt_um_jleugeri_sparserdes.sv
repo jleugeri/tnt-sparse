@@ -42,11 +42,6 @@ module tt_um_jleugeri_sparserdes (
     assign bitstream_in = uio_in[5];
     assign uio_out[7] = done;
 
-    // dummy wires
-    logic [$clog2(SIZE)-1:0] addr_in_dummy;
-    logic [$clog2(SIZE)-1:0] addr_out_dummy;
-    logic bitstream_out_dummy, done_dummy;
-
     // instantiate the module
     sparserdes #(
         .SIZE(SIZE)
@@ -60,21 +55,6 @@ module tt_um_jleugeri_sparserdes (
         .bitstream_in(bitstream_in),
         .bitstream_out(bitstream_internal),
         .done(done)
-    );
-
-
-    sparserdes #(
-        .SIZE(SIZE)
-    ) s2 (
-        .clk(clk),
-        .reset(reset),
-        .enable(ena),
-        .instruction(instructions2),
-        .addr_in(addr_in_dummy),
-        .addr_out(addr_out_dummy),
-        .bitstream_in(bitstream_internal),
-        .bitstream_out(bitstream_out_dummy),
-        .done(done_dummy)
     );
 
 endmodule: tt_um_jleugeri_sparserdes
