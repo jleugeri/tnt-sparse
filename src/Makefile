@@ -18,7 +18,7 @@ ifneq ($(GATES),yes)
 # this is the only part you should need to modify:
 WAVES 			 = 1
 
-VERILOG_SOURCES += $(PWD)/sparserdes.sv $(PWD)/tt_um_jleugeri_sparserdes.sv
+VERILOG_SOURCES += $(PWD)/sparserdes.sv $(PWD)/sparserdes_node.sv $(PWD)/tt_um_jleugeri_sparserdes.sv
 VERILOG_SOURCES += $(PWD)/tb.sv
 
 else

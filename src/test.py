@@ -10,7 +10,12 @@ async def reset(dut):
     dut.rst_n.value = 1
     await ClockCycles(dut.clk, 1)
 
-#reversed(bin(i)[2:])
+async def clear_all(dut):
+    dut.uio_in.value = 0b00000010
+    await ClockCycles(dut.clk, 1)
+    dut.uio_in.value = 0b00000000
+    await ClockCycles(dut.clk, 1)
+
 
 async def set_bits(dut, indices, size):
     bits = np.zeros(size)
@@ -26,8 +31,8 @@ async def set_bits(dut, indices, size):
     dut.ui_in.value = 0
     await ClockCycles(dut.clk, 1)
 
-async def trigger_reception(dut, bits=None, dev=0):
-    dut.uio_in.value = 0b00000111 | (0b1000 if dev else 0b0000)
+async def trigger_reception(dut, bits=None):
+    dut.uio_in.value = 0b00000111
     dut.ui_in.value = 0
     await RisingEdge(dut.clk)
     await FallingEdge(dut.clk)
@@ -40,14 +45,29 @@ async def trigger_reception(dut, bits=None, dev=0):
             await RisingEdge(dut.clk)
             await FallingEdge(dut.clk)
 
-async def iterate(dut, start=0):
+    timedout = True
+    for j in range(1000):
+        await RisingEdge(dut.clk)
+        await FallingEdge(dut.clk)
+        if dut.uio_out[7].value == 1:
+            timedout = False
+            break
+
+    assert timedout==False, "Timeout!"
+
+async def iterate(dut, size):
     # Now trigger the read from address start
-    dut.ui_in.value = start
+    dut.ui_in.value = 0b00000000
     dut.uio_in.value = 0b00000011
     await ClockCycles(dut.clk, 1)
     dut.uio_in.value = 0b00000000
     dut.ui_in.value = 0
     
+    ## wait fixed number of cycles for setup
+    for j in range(np.log2(size).astype(int) + 1):
+        await RisingEdge(dut.clk)
+        await FallingEdge(dut.clk)
+
     sequence = []
     timedout = True
     for j in range(1000):
@@ -68,7 +88,6 @@ async def test(dut):
     dut._log.info("Running test!")
     
     cocotb.start_soon(Clock(dut.clk, 20, units="ns").start())
-    clock = dut.clk
 
     # set initial values to determined state
     num_bits = dut.SIZE.value
@@ -78,88 +97,48 @@ async def test(dut):
 
     # reset
     await reset(dut)
+    dut.ena = 1
 
     # wait for a bit
     await ClockCycles(dut.clk, 10)
     
-    await trigger_reception(dut, [1, 0, 0, 0, 0, 1, 0])
-
-    # wait for a bit
-    await ClockCycles(dut.clk, 10)
-    """
-    # set bits
-    await set_bits(dut, [3], num_bits)
+    tgt_sequence = [1, 0, 0, 0, 0, 1, 0]
+    await trigger_reception(dut, tgt_sequence)
 
     # wait for a bit
     await ClockCycles(dut.clk, 10)
 
-    # Now trigger the read from address 0
-    bits = await iterate(dut, 0)
-    print(bits)
-
-    # wait for a bit
-    await ClockCycles(dut.clk, 10)
-    """
-    """
-    dut.uio_in.value = 0b00000001 
-    dut.ui_in.value = 3
-    await ClockCycles(dut.clk, 1)
-
-    # Now trigger the read from address 0
-    dut.uio_in.value = 0b00000011
-    dut.ui_in.value = 0
-    await ClockCycles(dut.clk, 1)
-    dut.uio_in.value = 0b00000000 
-    dut.ena.value = 1
-    await ClockCycles(dut.clk, 1)
+    rec_sequence = await iterate(dut, num_bits)
     
-    timedout = True
-    for j in range(1000):
-        await RisingEdge(dut.clk)
-        await FallingEdge(dut.clk)
-        if dut.uio_out[7].value == 1:
-            timedout = False
-            break
+    assert np.all(np.array(tgt_sequence) == np.array(rec_sequence)), "Received sequence does not match transmitted sequence!"
 
-    dut.ena.value = 0
+    print(tgt_sequence, rec_sequence)
 
     # wait for a bit
     await ClockCycles(dut.clk, 10)
-    sequences = []
+    
 
-    for i in range(2**8):
-        # set/cear bit i
-        await ClockCycles(dut.clk, 1)
-        dut.uio_in.value = 0b00000000
-        dut.ui_in.value = 0
-        await ClockCycles(dut.clk, 1)
+    for t in range(100):
+        i, = np.nonzero(np.random.rand(num_bits) < 0.2)
+        await set_bits(dut, [i], num_bits)
+        await trigger_reception(dut)
+        await ClockCycles(dut.clk, 10)
+        tgt_sequence = await iterate(dut, num_bits)
+
+        await ClockCycles(dut.clk, 10)
+
+        # reset leafs
+        await clear_all(dut)
+
+        # play sequence back to set the leafs
+        await trigger_reception(dut, tgt_sequence)
 
         # wait for a bit
         await ClockCycles(dut.clk, 10)
 
-        # Now trigger the read from address 0
-        dut.ui_in.value = 0
-        dut.uio_in.value = 0b00000011
-        await ClockCycles(dut.clk, 1)
-        dut.ena.value = 1
-        dut.uio_in.value = 0b00000000
-        
-        sequence = []
-        timedout = True
-        for j in range(1000):
-            await RisingEdge(dut.clk)
-            await FallingEdge(dut.clk)
-            sequence.append(dut.uio_out[6].value.integer)
-            if dut.uio_out[7].value == 1:
-                timedout = False
-                dut.ena.value = 0
-                break
+        # recover sequence from serdes
+        rec_sequence = await iterate(dut, num_bits)
 
-        assert timedout==False, "Timeout!"
+        print (tgt_sequence, rec_sequence)
 
-        print(bin(i), ":\t", "".join(map(str,sequence)))
-
-        sequences.append(sequence)
-        
-        await ClockCycles(dut.clk, 20)
-    """
+        assert np.all(len(tgt_sequence) == len(rec_sequence) and np.array(tgt_sequence) == np.array(rec_sequence)), "Received sequence does not match transmitted sequence!"

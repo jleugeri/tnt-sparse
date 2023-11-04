@@ -22,10 +22,8 @@ module tt_um_jleugeri_sparserdes (
     assign uio_out[5:0] = 6'b000000;
     assign uio_out[6] = bitstream_internal;
 
-    logic [2:0] instructions1;
-    logic [2:0] instructions2;
-    assign instructions1 = uio_in[3] ? 3'b000 : uio_in[2:0];
-    assign instructions2 = uio_in[3] ? uio_in[2:0] : 3'b000;
+    logic [2:0] instruction;
+    assign instruction = uio_in[2:0];
 
     logic [$clog2(SIZE)-1:0] addr_in;
     assign addr_in = ui_in[$clog2(SIZE)-1:0];
@@ -49,7 +47,7 @@ module tt_um_jleugeri_sparserdes (
         .clk(clk),
         .reset(reset),
         .enable(ena),
-        .instruction(instructions1),
+        .instruction(instruction),
         .addr_in(addr_in),
         .addr_out(addr_out),
         .bitstream_in(bitstream_in),
